@@ -1,0 +1,7 @@
+# Inherits root .gitignore — source-specific additions below
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+/results.json
+/output/

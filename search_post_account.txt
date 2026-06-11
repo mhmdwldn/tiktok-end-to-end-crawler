@@ -1,0 +1,23 @@
+curl 'https://www.tikwm.com/api/user/posts' \
+  -H 'accept: application/json, text/javascript, */*; q=0.01' \
+  -H 'accept-language: en-US,en;q=0.9,id;q=0.8' \
+  -H 'content-type: application/x-www-form-urlencoded; charset=UTF-8' \
+  -b 'current_language=en; _ga=GA1.1.1489549662.1781072786; _gcl_au=1.1.1196657410.1781072786; cf_clearance=uFzCFDuYtmF_5sTaU27JUuHGMS5HkZLXM.YvDHYQnbs-1781081769-1.2.1.1-sI9nC0HdNvk6As1wbP0r0SBsMitdfJgIC3l_Z5oUXmdasUw9sVfDG97tUcVmtNZEb7YEzwNeay3YSP1PI9Iq6BBTyzfAHPTDGA6SZkGsKltQ_YeIiaiH4aiYP5y6dFeg8W.9YzWvceRjFy4QIBT3IKSNImeKRY1vsi5AwvIJ6pNXA8VPlhpJZ.JCGBElxbfxiUiQQzea42D1SPnHJwC3lgRdP.zd6sfXPO1_5dzu2S99riT6V6_E3gmHgz4UxOpGeeZmxItzMlVDSH5LN_Wfq08lMAOcEaKuhDjKQBjtu9hDHlEVgeWqWwjLalzY_lgPijuPzPad1qDvNUlSfK4rMncYhM6BoBIR6uJBP.BgJkmQmnIocM35u41UNK1e9fzlqYaE_xoWXSnFiP3zgWlnpyJJHbtA5KuMqigZMJVhLuw; _ga_5370HT04Z3=GS2.1.s1781081754$o2$g1$t1781081769$j45$l0$h0' \
+  -H 'origin: https://www.tikwm.com' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://www.tikwm.com/' \
+  -H 'sec-ch-ua: "Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"' \
+  -H 'sec-ch-ua-arch: "x86"' \
+  -H 'sec-ch-ua-bitness: "64"' \
+  -H 'sec-ch-ua-full-version: "149.0.7827.54"' \
+  -H 'sec-ch-ua-full-version-list: "Google Chrome";v="149.0.7827.54", "Chromium";v="149.0.7827.54", "Not)A;Brand";v="24.0.0.0"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-model: ""' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-ch-ua-platform-version: "19.0.0"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36' \
+  -H 'x-requested-with: XMLHttpRequest' \
+  --data-raw 'unique_id=%40persib&count=12&cursor=0&web=1&hd=1'

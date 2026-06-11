@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-tiktok-crawler
+data:
+  config.yaml: |
+    tiktok_crawler:
+
+      environment: production
+      log_level: INFO
+
+      kafka:
+        bootstrap_servers: kafka01.production.bt:9092,kafka02.production.bt:9092
+        topic: tiktok.posts.raw
+        client_id: tiktok-crawler
+        acks: all
+        compression_type: gzip
+        max_request_size: 1048576
+        linger_ms: 10
+        request_timeout_ms: 30000
+
+      elasticsearch:
+        hosts:
+          - http://elasticsearch.production.bt:9200
+        index_name: tiktok_posts
+        request_timeout: 30
+        max_retries: 3
+        chunk_size: 500
+
+      crawler:
+        base_url: https://www.tikwm.com
+        search_endpoint: /api/feed/search
+        request_timeout: 30.0
+        max_retries: 3
+        retry_backoff: 2.0
+        rate_limit_rps: 5.0
+        default_count: 12

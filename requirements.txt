@@ -1,0 +1,7 @@
+# This project uses the source/ directory structure.
+# Install dependencies:
+#   pip install -r source/requirements.txt
+#
+# Or individually:
+#   pip install -r requirements.txt
+-r source/requirements.txt

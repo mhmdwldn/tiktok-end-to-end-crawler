@@ -1,0 +1,46 @@
+# ============================================================================
+# TikTok Crawler — sample YAML configuration
+# ============================================================================
+# Copy to config.yaml and adjust for your environment.
+# Settings are also overridable via TIKTOK_* env vars (see config.py).
+# ============================================================================
+
+tiktok_crawler:
+
+  environment: development
+  log_level: DEBUG
+
+  kafka:
+    bootstrap_servers: localhost:9092
+    topic: tiktok.posts.raw
+    client_id: tiktok-crawler
+    acks: all
+    compression_type: gzip
+    max_request_size: 1048576
+    linger_ms: 10
+    request_timeout_ms: 30000
+
+  elasticsearch:
+    hosts:
+      - http://localhost:9200
+    index_name: tiktok_posts
+    # api_key: your-api-key       # uncomment for API-key auth
+    # username: elastic
+    # password: changeme
+    request_timeout: 30
+    max_retries: 3
+    chunk_size: 500
+
+  crawler:
+    base_url: https://www.tikwm.com
+    search_endpoint: /api/feed/search
+    request_timeout: 30.0
+    max_retries: 3
+    retry_backoff: 2.0
+    rate_limit_rps: 5.0
+    default_count: 12
+    # proxy_url: http://user:pass@proxy.example.com:8080
+    user_agent: >-
+      Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+      AppleWebKit/537.36 (KHTML, like Gecko)
+      Chrome/149.0.0.0 Safari/537.36
