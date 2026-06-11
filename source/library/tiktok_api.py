@@ -188,6 +188,58 @@ class TikTokAPI:
             else:
                 break
 
+    async def get_user_stories(
+        self,
+        unique_id: str,
+        max_pages: int = 1,
+        count: int = 12,
+        hd: int = 1,
+        **kwargs: Any,
+    ) -> AsyncIterator[KafkaEvent]:
+        """Fetch stories from a specific TikTok user by ``unique_id``.
+
+        Uses ``POST /api/user/story``.
+
+        Example::
+
+            async for event in api.get_user_stories("@zavann_d", max_pages=2):
+                print(event.payload.title)
+
+        Args:
+            unique_id: TikTok username (e.g. ``@zavann_d`` or ``zavann_d``).
+            max_pages: Maximum pages to fetch.
+            count: Results per page (1–50).
+            hd: HD quality flag.
+
+        Yields:
+            :class:`KafkaEvent` per story found.
+        """
+        cursor = kwargs.get("cursor", 0)
+        pages_fetched = 0
+
+        while pages_fetched < max_pages:
+            request = TikTokUserPostsRequest(
+                unique_id=unique_id,
+                count=count,
+                cursor=cursor,
+                hd=hd,
+            )
+            response = await self._do_user_story_request(request)
+
+            if response is None:
+                logger.warning("Empty response for unique_id=%r cursor=%d", unique_id, cursor)
+                break
+
+            for post in response.data.videos:
+                yield self._post_to_event(post, metadata={"unique_id": unique_id, "cursor": cursor, "type": "story"})
+
+            pages_fetched += 1
+
+            if response.data.cursor is not None and response.data.cursor != cursor:
+                cursor = response.data.cursor
+            else:
+                break
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
@@ -198,8 +250,13 @@ class TikTokAPI:
 
     async def _do_user_posts_request(self, request: TikTokUserPostsRequest) -> Optional[TikTokSearchResponse]:
         """Execute a single HTTP POST to the user/posts endpoint with retries."""
-        user_endpoint = getattr(self._settings, "user_posts_endpoint", "/api/user/posts")
-        return await self._do_request(user_endpoint, request.to_form_data())
+        endpoint = self._settings.user_posts_endpoint
+        return await self._do_request(endpoint, request.to_form_data())
+
+    async def _do_user_story_request(self, request: TikTokUserPostsRequest) -> Optional[TikTokSearchResponse]:
+        """Execute a single HTTP POST to the user/story endpoint with retries."""
+        endpoint = self._settings.user_story_endpoint
+        return await self._do_request(endpoint, request.to_form_data())
 
     async def _do_request(self, endpoint: str, data: dict[str, str]) -> Optional[TikTokSearchResponse]:
         """Execute a single HTTP POST with retries and parse the response."""

@@ -141,6 +141,10 @@ class TikTokCrawlerSettings(CrawlerSettings):
         default="/api/user/posts",
         description="User-posts endpoint — fetch posts by unique_id",
     )
+    user_story_endpoint: str = Field(
+        default="/api/user/story",
+        description="User-story endpoint — fetch stories by unique_id",
+    )
     cookies: str = Field(
         default="",
         description="Optional cookie string for authenticated endpoints "

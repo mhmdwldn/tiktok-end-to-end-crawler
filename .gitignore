@@ -49,6 +49,8 @@ htmlcov/
 /test_user.json
 /cookies_tmp.txt
 /output/
+/search_story.txt
+/search_*.txt
 
 # ============================================================================
 # Environment & Secrets

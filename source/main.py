@@ -48,8 +48,8 @@ if __name__ == "__main__":
                               choices=["scrape", "full"],
                               help="scrape: JSON only | full: crawl + output driver")
     argp_crawler.add_argument("--type", dest="type", type=str, default="search",
-                              choices=["search", "user-posts"],
-                              help="search: keyword search | user-posts: posts by user unique_id (default: search)")
+                              choices=["search", "user-posts", "user-story"],
+                              help="search: keyword search | user-posts: posts by username | user-story: stories by username")
     argp_crawler.add_argument("--keyword", dest="keyword", type=str, default=None,
                               help="Search keyword (for --type search)")
     argp_crawler.add_argument("--unique-id", dest="unique_id", type=str, default=None,
@@ -116,6 +116,26 @@ if __name__ == "__main__":
             job = {"unique_id": args.unique_id}
             posts = asyncio.run(ctl.scrape_to_json(job))
 
+        # --- type: user-story ---
+        elif args.type == "user-story":
+            if not args.unique_id:
+                log.error("--unique-id is required for --type user-story (e.g. --unique-id @zavann_d)")
+                sys.exit(1)
+
+            from controllers.tiktok.user_story import TikTokUserStory
+
+            kwargs = dict(
+                unique_id=args.unique_id,
+                count=args.count,
+                max_pages=args.max_pages,
+                hd=args.hd,
+                cookies=args.cookies,
+                output_file=output_path,
+            )
+            ctl = TikTokUserStory(**kwargs)
+            job = {"unique_id": args.unique_id}
+            posts = asyncio.run(ctl.scrape_to_json(job))
+
         # --- type: search (default) ---
         else:
             from controllers.tiktok.search_post import TikTokSearchPost
@@ -168,6 +188,15 @@ if __name__ == "__main__":
                 sys.exit(1)
             from controllers.tiktok.user_posts import TikTokUserPosts
             ctl = TikTokUserPosts(**kwargs)
+            job = {"unique_id": args.unique_id}
+
+        # --- type: user-story ---
+        elif args.type == "user-story":
+            if not args.unique_id:
+                log.error("--unique-id is required for --type user-story")
+                sys.exit(1)
+            from controllers.tiktok.user_story import TikTokUserStory
+            ctl = TikTokUserStory(**kwargs)
             job = {"unique_id": args.unique_id}
 
         # --- type: search (default) ---
