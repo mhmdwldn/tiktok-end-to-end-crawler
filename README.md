@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Pydantic](https://img.shields.io/badge/pydantic-v2-e92063.svg)](https://docs.pydantic.dev/latest/)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-47_passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-51_passed-green.svg)]()
 
 </div>
 
@@ -41,8 +41,10 @@ This project implements a **production-grade, config-driven scraper pipeline** f
 |------|----------|----------|-------------|
 | `scrape` | `search` | `POST /api/feed/search` | Search by keyword -> JSON stdout/file |
 | `scrape` | `user-posts` | `POST /api/user/posts` | Fetch posts by username -> JSON stdout/file |
+| `scrape` | `user-story` | `POST /api/user/story` | Fetch stories by username -> JSON stdout/file |
 | `full` | `search` | `POST /api/feed/search` | Crawl + publish to output driver (Kafka/ES/file/std) |
 | `full` | `user-posts` | `POST /api/user/posts` | Crawl + publish to output driver |
+| `full` | `user-story` | `POST /api/user/story` | Crawl + publish to output driver |
 
 ### Design Principles
 
@@ -81,7 +83,8 @@ tiktok-end-to-end-crawler/
     │   └── tiktok/
     │       ├── __init__.py            #   TikTokControllers — API client lifecycle, job helpers
     │       ├── search_post.py         #   TikTokSearchPost — keyword search handler
-    │       └── user_posts.py          #   TikTokUserPosts — user-posts handler (NEW)
+    │       ├── user_posts.py          #   TikTokUserPosts — user-posts handler
+    │       └── user_story.py          #   TikTokUserStory — user-story handler (NEW)
     │
     ├── exception/
     │   ├── __init__.py
@@ -122,7 +125,8 @@ tiktok-end-to-end-crawler/
         ├── test_tiktok_api.py         #   8 tests
         ├── test_output_drivers.py     #   6 tests
         ├── test_controllers.py        #   6 tests
-        └── test_user_posts.py         #   8 tests (NEW)
+        ├── test_user_posts.py         #   8 tests
+        └── test_user_story.py         #   4 tests (NEW)
 ```
 
 ---
@@ -160,7 +164,7 @@ tiktok-end-to-end-crawler/
 ### Data Flow
 
 ```
-TikTokAPI.search_posts("keyword")  /  TikTokAPI.get_user_posts("@user")
+TikTokAPI.search_posts("keyword")  /  TikTokAPI.get_user_posts("@user")  /  TikTokAPI.get_user_stories("@user")
         │
         ▼
 TikTokSearchRequest / TikTokUserPostsRequest (form-encoded)
@@ -253,6 +257,10 @@ python main.py crawler --mode scrape --keyword "persib" -o results.json --pretty
 python main.py crawler --mode scrape --type user-posts --unique-id "@persib" \
     --cookies "cf_clearance=XXX; current_language=en" --count 10
 
+# === User-story (requires Cloudflare cookies) ===
+python main.py crawler --mode scrape --type user-story --unique-id "@zavann_d" \
+    --cookies "cf_clearance=XXX; current_language=en" --count 10
+
 # === Full pipeline ===
 python main.py crawler --mode full --keyword "persib" -d kafka -o tiktok.posts.raw
 python main.py crawler --mode full --keyword "persib" -d elasticsearch -o tiktok_posts
@@ -273,7 +281,7 @@ usage: main.py [-h] [-c CONFIG] [-s SOURCE] [-d DESTINATION] [-i INPUT]
 
 crawler options:
   --mode {scrape,full}     scrape: JSON only | full: crawl + output driver
-  --type {search,user-posts}  search: keyword | user-posts: by username (default: search)
+  --type {search,user-posts,user-story}  search: keyword | user-posts: by username | user-story: stories by username
   --keyword KEYWORD        Search keyword (for --type search)
   --unique-id UNIQUE_ID    TikTok username (for --type user-posts, e.g. @persib)
   --count COUNT            Results per page (default: 12, max: 50)
@@ -300,6 +308,10 @@ python main.py crawler --mode scrape --keyword "persib" | jq '.[] | {id: .video_
 # User posts
 python main.py crawler --mode scrape --type user-posts --unique-id "@persib" \
     --cookies "cf_clearance=XXX" -o user_posts.json
+
+# User stories
+python main.py crawler --mode scrape --type user-story --unique-id "@zavann_d" \
+    --cookies "cf_clearance=XXX" -o stories.json
 
 # Full pipeline: Kafka
 python main.py crawler --mode full --keyword "persib" -d kafka -o my_topic \
@@ -381,6 +393,11 @@ posts = await ctl.scrape_to_json({"keyword": "persib"})
 ctl = TikTokUserPosts(unique_id="@persib", count=10, cookies="cf_clearance=...")
 posts = await ctl.scrape_to_json({"unique_id": "persib"})
 
+# Scrape user stories
+from controllers.tiktok.user_story import TikTokUserStory
+ctl = TikTokUserStory(unique_id="@zavann_d", count=10, cookies="cf_clearance=...")
+posts = await ctl.scrape_to_json({"unique_id": "zavann_d"})
+
 # Full pipeline
 ctl = TikTokSearchPost(keyword="persib", destination="kafka", output="my_topic",
                        bootstrap_servers="kafka:9092")
@@ -404,6 +421,10 @@ async with api:
     # User posts
     async for event in api.get_user_posts("@persib", max_pages=3):
         print(event.payload.stats.play_count)
+
+    # User stories
+    async for event in api.get_user_stories("@zavann_d", max_pages=2):
+        print(event.payload.title)
 
     # Single post (best-effort via search)
     event = await api.fetch_post("7123456789012345678")
@@ -457,6 +478,11 @@ posts = await ctl.scrape_to_json({"keyword": "persib"})
 # Scrape user posts
 ctl = TikTokUserPosts(unique_id="@persib", cookies="cf_clearance=...")
 posts = await ctl.scrape_to_json({"unique_id": "persib"})
+
+# Scrape user stories
+from controllers.tiktok.user_story import TikTokUserStory
+ctl = TikTokUserStory(unique_id="@zavann_d", cookies="cf_clearance=...")
+posts = await ctl.scrape_to_json({"unique_id": "zavann_d"})
 
 # Full pipeline
 ctl = TikTokSearchPost(keyword="persib", destination="kafka", output="topic",
@@ -622,14 +648,15 @@ python -m pytest tests/ --cov=. --cov-report=term-missing
 ```
 
 ```
-47 tests across 6 modules (all external services mocked)
+51 tests across 7 modules (all external services mocked)
 ────────────────────────────────────────────────────────
 ├── test_config.py            5 tests   — settings defaults, env override
 ├── test_schemas.py          14 tests   — validation, coercion, aliases, timezone
 ├── test_tiktok_api.py        8 tests   — HTTP mock, pagination, cursor, headers
 ├── test_output_drivers.py    6 tests   — factory, std, file drivers
 ├── test_controllers.py       6 tests   — scrape_to_json, handler + output
-└── test_user_posts.py        8 tests   — schema, controller, unique_id normalization
+├── test_user_posts.py        8 tests   — schema, controller, unique_id normalization
+└── test_user_story.py        4 tests   — controller, unique_id, handler output
 ```
 
 ---
@@ -724,7 +751,7 @@ asyncio.run(custom_pipeline())
 | `RuntimeError: no running event loop` (Kafka) | Driver used outside `asyncio.run()` | Wrap in `async def` + `asyncio.run()` |
 | `RuntimeError: FileOutputDriver has no output path` | Missing `-o` in full+file mode | Add `-o <path>` |
 | `ValueError: unique_id is required` | Empty `--unique-id` | Provide `--unique-id @<username>` |
-| 403 on `/api/user/posts` | Missing/expired Cloudflare cookies | Get fresh `cf_clearance` from browser, pass via `--cookies` |
+| 403 on `/api/user/posts` or `/api/user/story` | Missing/expired Cloudflare cookies | Get fresh `cf_clearance` from browser, pass via `--cookies` |
 | `ConnectionRefusedError` (Kafka) | Broker unreachable | Check `--bootstrap-servers` |
 | `ConnectionError` (ES) | ES node down | Verify `--elasticsearch-hosts` |
 | `ValidationError` | API response format changed | Update field aliases in `library/schemas.py` |
