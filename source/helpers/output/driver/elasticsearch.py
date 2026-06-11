@@ -1,26 +1,23 @@
-"""Elasticsearch output driver."""
+"""Elasticsearch output driver — uses REST API for broad version compatibility."""
 
 import json
 import logging
 from typing import Any, Optional
 
-from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import (
-    ConnectionError as ESConnectionError,
-    ConnectionTimeout as ESConnectionTimeout,
-    TransportError,
-)
+import requests
 from helpers.output.driver import OutputDriver
 
 logger = logging.getLogger(__name__)
 
 
 class ElasticsearchOutputDriver(OutputDriver):
-    """Index documents into Elasticsearch.
+    """Index documents into Elasticsearch via REST API.
+
+    Uses ``requests`` directly (not the ES client) to avoid version
+    mismatches between the client library and the cluster.
 
     Errors are logged but do **not** raise — the pipeline continues
-    on best-effort.  For strict delivery guarantees, wrap calls in
-    application-level retry / dead-letter logic.
+    on best-effort.
     """
 
     name = "elasticsearch"
@@ -38,11 +35,11 @@ class ElasticsearchOutputDriver(OutputDriver):
         self.index_name = index_name
         if isinstance(hosts, str):
             hosts = [hosts]
-        self._hosts = hosts
+        self._base_url = hosts[0].rstrip("/")
         self._request_timeout = request_timeout
         self._max_retries = max_retries
-        self._client: Optional[Elasticsearch] = None
-        self._ensure_client()
+        self._session = requests.Session()
+        self._session.headers.update({"Content-Type": "application/json"})
 
     # ------------------------------------------------------------------
     # OutputDriver interface
@@ -50,8 +47,6 @@ class ElasticsearchOutputDriver(OutputDriver):
 
     def put(self, output: str, **kwargs):
         """Index *output* (JSON string or dict) into Elasticsearch."""
-        self._ensure_client()
-
         index = kwargs.get("index", self.index_name)
         doc_id = kwargs.get("doc_id")
 
@@ -67,33 +62,63 @@ class ElasticsearchOutputDriver(OutputDriver):
             logger.error("Unsupported output type for ES: %s", type(output))
             return
 
-        try:
-            self._client.index(index=index, id=doc_id, document=doc)
-            logger.debug("Indexed doc_id=%s into index=%s", doc_id, index)
-        except (ESConnectionError, ESConnectionTimeout, TransportError) as e:
-            logger.error("ES indexing error for index=%s: %s", index, e)
+        url = f"{self._base_url}/{index}/_doc"
+        if doc_id:
+            url = f"{url}/{doc_id}"
+
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                resp = self._session.post(url, json=doc, timeout=self._request_timeout)
+                if resp.status_code in (200, 201):
+                    logger.debug("Indexed doc_id=%s into index=%s", doc_id, index)
+                    return
+                else:
+                    logger.error("ES indexing error (status=%d): %s", resp.status_code, resp.text[:200])
+                    return
+            except requests.RequestException as e:
+                if attempt < self._max_retries:
+                    logger.warning("ES attempt %d/%d failed: %s — retrying", attempt, self._max_retries, e)
+                else:
+                    logger.error("ES indexing failed after %d attempts: %s", self._max_retries, e)
 
     def close(self):
-        """Close the Elasticsearch client."""
-        if self._client is not None:
-            self._client.close()
-            self._client = None
+        """Close the HTTP session."""
+        self._session.close()
 
     # ------------------------------------------------------------------
-    # Internal
+    # Bulk helper (optional)
     # ------------------------------------------------------------------
 
-    def _ensure_client(self):
-        """Lazily create the Elasticsearch client from stored config."""
-        if self._client is not None:
+    def bulk_put(self, docs: list[dict], index: str | None = None):
+        """Bulk-index a list of documents in a single _bulk request."""
+        index = index or self.index_name
+        if not docs:
             return
-        self._client = Elasticsearch(
-            hosts=self._hosts,
-            request_timeout=self._request_timeout,
-            max_retries=self._max_retries,
-            retry_on_timeout=True,
-        )
-        logger.info(
-            "ElasticsearchOutputDriver connected to %s (timeout=%ds, retries=%d)",
-            self._hosts, self._request_timeout, self._max_retries,
-        )
+
+        lines = []
+        for doc in docs:
+            action = {"index": {"_index": index}}
+            if "video_id" in doc:
+                action["index"]["_id"] = doc["video_id"]
+            lines.append(json.dumps(action, ensure_ascii=False))
+            lines.append(json.dumps(doc, ensure_ascii=False, default=str))
+
+        body = "\n".join(lines) + "\n"
+        url = f"{self._base_url}/_bulk"
+
+        try:
+            resp = self._session.post(
+                url, data=body,
+                headers={"Content-Type": "application/x-ndjson"},
+                timeout=self._request_timeout,
+            )
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get("errors"):
+                    logger.warning("Bulk index had errors: %d docs", len(docs))
+                else:
+                    logger.info("Bulk-indexed %d docs into %s", len(docs), index)
+            else:
+                logger.error("Bulk index failed (status=%d): %s", resp.status_code, resp.text[:200])
+        except requests.RequestException as e:
+            logger.error("Bulk index request failed: %s", e)

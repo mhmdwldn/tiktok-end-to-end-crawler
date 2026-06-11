@@ -66,8 +66,23 @@ if __name__ == "__main__":
     argp_crawler.add_argument("--pretty", action="store_true", default=False,
                               help="Pretty-print JSON output")
     argp_crawler.add_argument("--log-level", dest="log_level", type=str, default="INFO")
+    # Output-driver flags (duplicated from parent so they work after 'crawler' too)
+    argp_crawler.add_argument("-d", "--destination", dest="destination_crawler", type=str, default=None,
+                              help="Output driver: kafka | elasticsearch | file | std")
+    argp_crawler.add_argument("--bootstrap-servers", dest="bootstrap_servers_crawler", type=str, default=None,
+                              help="Kafka broker list")
+    argp_crawler.add_argument("--elasticsearch-hosts", dest="elasticsearch_hosts_crawler", type=str, default=None,
+                              help="ES host URL")
 
     args = argp.parse_args()
+
+    # Merge: crawler subparser values take precedence over parent parser defaults
+    if getattr(args, "bootstrap_servers_crawler", None):
+        args.bootstrap_servers = args.bootstrap_servers_crawler
+    if getattr(args, "elasticsearch_hosts_crawler", None):
+        args.elasticsearch_hosts = args.elasticsearch_hosts_crawler
+    if getattr(args, "destination_crawler", None):
+        args.destination = args.destination_crawler
 
     # --- Setup logging ---
     log_level = getattr(args, "log_level", "INFO")
