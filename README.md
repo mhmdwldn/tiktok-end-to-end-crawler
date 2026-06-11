@@ -102,8 +102,8 @@ tiktok-end-to-end-crawler/
     │       ├── __init__.py            #   Output facade
     │       └── driver/
     │           ├── __init__.py        #   OutputDriver(ABC)
-    │           ├── kafka.py           #   KafkaOutputDriver (uses running event loop)
-    │           ├── elasticsearch.py   #   ElasticsearchOutputDriver (config-driven)
+    │           ├── kafka.py           #   KafkaOutputDriver (dedicated background thread)
+    │           ├── elasticsearch.py   #   ElasticsearchOutputDriver (REST API, no client lib)
     │           ├── file.py            #   FileOutputDriver (cached handles, actionable errors)
     │           ├── std.py             #   StdOutputDriver
     │           └── factory/__init__.py#   OutputDriverFactory (registry pattern)
@@ -112,9 +112,11 @@ tiktok-end-to-end-crawler/
     │   ├── __init__.py
     │   ├── config.py                  #   Pydantic v2 BaseSettings (env + YAML, absolute-path resolution)
     │   ├── schemas.py                 #   Pydantic v2 models (timezone-aware timestamps)
-    │   └── tiktok_api.py             #   TikTokAPI — async HTTP client (cookies via constructor)
+    │   ├── tiktok_api.py             #   TikTokAPI — async HTTP client (cookies via constructor)
+    │   └── setup_infra.py             #   Kafka topic + ES index creation (NEW)
     │
     ├── deployment/
+    │   ├── compose.yaml              #   Docker Compose: Kafka + ES + Kibana (local dev)
     │   ├── 01-configmap.yaml
     │   └── 02-deployment.yaml
     │
@@ -234,7 +236,26 @@ source .venv/bin/activate       # Linux/macOS
 pip install -r source/requirements.txt
 ```
 
-### 2. Configure
+### 2. Start infrastructure (Docker)
+
+```bash
+docker-compose -f source/deployment/compose.yaml up -d
+
+# Verify
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+### 3. Create Kafka topic + ES index
+
+```bash
+cd source/
+python -m library.setup_infra
+
+# Health check only
+python -m library.setup_infra --health
+```
+
+### 4. Configure
 
 Edit `config.yaml` at the repository root, or set env vars:
 
@@ -243,12 +264,12 @@ export TIKTOK_KAFKA__BOOTSTRAP_SERVERS="broker1:9092,broker2:9092"
 export TIKTOK_CRAWLER__RATE_LIMIT_RPS="10"
 ```
 
-### 3. Run
+### 5. Run
 
 ```bash
 cd source/
 
-# === Keyword search ===
+# === Scrape only (no infrastructure needed) ===
 python main.py crawler --mode scrape --keyword "persib"
 python main.py crawler --mode scrape --keyword "viral" --count 20 --max-pages 3
 python main.py crawler --mode scrape --keyword "persib" -o results.json --pretty
@@ -261,11 +282,19 @@ python main.py crawler --mode scrape --type user-posts --unique-id "@persib" \
 python main.py crawler --mode scrape --type user-story --unique-id "@zavann_d" \
     --cookies "cf_clearance=XXX; current_language=en" --count 10
 
-# === Full pipeline ===
+# === Full pipeline: crawl -> Kafka ===
 python main.py crawler --mode full --keyword "persib" -d kafka -o tiktok.posts.raw
+
+# === Full pipeline: crawl -> Elasticsearch ===
 python main.py crawler --mode full --keyword "persib" -d elasticsearch -o tiktok_posts
+
+# === Full pipeline: crawl -> file ===
 python main.py crawler --mode full --keyword "persib" -d file -o ./output.json
-python main.py crawler --mode full --keyword "persib" -d std
+
+# === Verify data landed ===
+docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 \
+    --topic tiktok.posts.raw --from-beginning --max-messages 1
+curl http://localhost:9200/tiktok_posts/_count
 ```
 
 ---
@@ -490,6 +519,28 @@ ctl = TikTokSearchPost(keyword="persib", destination="kafka", output="topic",
 await ctl.handler({"keyword": "persib"})
 ```
 
+### `source/library/setup_infra.py` — Infrastructure Setup
+
+```bash
+# Create Kafka topic + ES index
+python -m library.setup_infra
+
+# Health check
+python -m library.setup_infra --health
+
+# Delete & recreate
+python -m library.setup_infra --delete
+```
+
+```python
+from library.setup_infra import create_kafka_topic, create_elasticsearch_index, health_check
+
+# Programmatic
+create_kafka_topic("my_topic", num_partitions=1)
+create_elasticsearch_index("my_index")
+print(health_check())
+```
+
 ### `source/helpers/output/` — Output Drivers
 
 ```python
@@ -590,8 +641,8 @@ TikTokPost
 |--------|-----------|----------|-------|
 | `StdOutputDriver` | `std` | Nothing | Prints to stdout |
 | `FileOutputDriver` | `file` | `-o <path>` | Caches file handles; actionable errors |
-| `KafkaOutputDriver` | `kafka` | `-o <topic>` `--bootstrap-servers` | Uses **running** event loop; no private loop |
-| `ElasticsearchOutputDriver` | `elasticsearch` | `-o <index>` `--elasticsearch-hosts` | Config-driven timeouts/retries |
+| `KafkaOutputDriver` | `kafka` | `-o <topic>` `--bootstrap-servers` | Dedicated background thread + event loop |
+| `ElasticsearchOutputDriver` | `elasticsearch` | `-o <index>` `--elasticsearch-hosts` | REST API (requests) — ES 7/8/9 compatible |
 
 ### Adding a new driver
 
@@ -663,7 +714,24 @@ python -m pytest tests/ --cov=. --cov-report=term-missing
 
 ## Docker & Deployment
 
-### Build
+### Local Dev (Docker Compose)
+
+```bash
+# Start full stack
+docker-compose -f source/deployment/compose.yaml up -d
+
+# Check
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# zookeeper      Up  2181
+# kafka          Up  0.0.0.0:9092->9092/tcp
+# elasticsearch  Up  0.0.0.0:9200->9200/tcp
+# kibana         Up  0.0.0.0:5601->5601/tcp
+
+# Create topics & indices
+cd source && python -m library.setup_infra
+```
+
+### Build (Dockerfile)
 
 ```bash
 docker build -t tiktok-crawler .

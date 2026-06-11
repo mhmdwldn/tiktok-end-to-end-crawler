@@ -49,8 +49,11 @@ htmlcov/
 /test_user.json
 /cookies_tmp.txt
 /output/
-/search_story.txt
 /search_*.txt
+/sample_post_response.json
+/tiktok.posts.raw
+/tiktok_posts
+/results_*.json
 
 # ============================================================================
 # Environment & Secrets
